@@ -4,14 +4,22 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
 #include "debug.h"
 #include "sock.h"
 
+inline void socket_set_reuse(int sockfd)
+{
+    int val = 1;
+    int rc = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+    assert(rc == 0);
+}
+
 ssize_t sock_read (int sock_fd, void *buffer, size_t len)
 {
     ssize_t nr, tot_read;
-    char *buf = buffer; // avoid pointer arithmetic on void pointer                                    
+    char *buf = buffer; // avoid pointer arithmetic on void pointer
     tot_read = 0;
 
     while (len !=0 && (nr = read(sock_fd, buf, len)) != 0) {
@@ -33,7 +41,7 @@ ssize_t sock_read (int sock_fd, void *buffer, size_t len)
 ssize_t sock_write (int sock_fd, void *buffer, size_t len)
 {
     ssize_t nw, tot_written;
-    const char *buf = buffer;  // avoid pointer arithmetic on void pointer                             
+    const char *buf = buffer;  // avoid pointer arithmetic on void pointer
 
     for (tot_written = 0; tot_written < len; ) {
         nw = write(sock_fd, buf, len-tot_written);
@@ -71,6 +79,8 @@ int sock_create_bind (char *port)
         if (sock_fd < 0) {
             continue;
         }
+
+        socket_set_reuse(sock_fd);
 
         ret = bind(sock_fd, rp->ai_addr, rp->ai_addrlen);
         if (ret == 0) {
@@ -148,8 +158,6 @@ int sock_set_qp_info(int sock_fd, struct QPInfo *qp_info)
 
     tmp_qp_info.lid       = htons(qp_info->lid);
     tmp_qp_info.qp_num    = htonl(qp_info->qp_num);
-    tmp_qp_info.rkey      = htonl(qp_info->rkey);
-    tmp_qp_info.raddr     = htonll(qp_info->raddr);
 
     n = sock_write(sock_fd, (char *)&tmp_qp_info, sizeof(struct QPInfo));
     check(n==sizeof(struct QPInfo), "write qp_info to socket.");
@@ -170,9 +178,7 @@ int sock_get_qp_info(int sock_fd, struct QPInfo *qp_info)
 
     qp_info->lid       = ntohs(tmp_qp_info.lid);
     qp_info->qp_num    = ntohl(tmp_qp_info.qp_num);
-    qp_info->rkey      = ntohl(tmp_qp_info.rkey);
-    qp_info->raddr     = ntohll(tmp_qp_info.raddr);
-    
+
     return 0;
 
  error:

@@ -51,21 +51,22 @@ void *server_thread (void *arg)
 
     /* pre-post writes */
     for (i = 0; i < num_concurr_msgs; i++) {
-	post_write_unsignaled (msg_size, lkey, 0, qp, send_buf_ptr, raddr, rkey);
-	buf_offset = (buf_offset + msg_size) % buf_size;
-	raddr      = raddr_base + buf_offset;
+        post_write_unsignaled (msg_size, lkey, 0, qp, send_buf_ptr, raddr, rkey);
+        buf_offset = (buf_offset + msg_size) % buf_size;
+        raddr      = raddr_base + buf_offset;
     }
-    
+
     while (ops_count < TOT_NUM_OPS) {
+        printf("begin %d\n", ops_count);
+
         /* loop till receive a msg from server */
-        while ((*msg_start != 'A') && (*msg_end != 'A')) {
-        }	
+        while ((*msg_start != 'A') && (*msg_end != 'A')) {}
 
         /* reset recv buffer */
         memset ((char *)msg_start, '\0', msg_size);
 
         /* send a msg back to the server */
-	ops_count += 1;
+        ops_count += 1;
         if ((ops_count % SIG_INTERVAL) == 0) {
             ret = post_write_signaled (msg_size, lkey, 0, qp, send_buf_ptr, raddr, rkey);
         } else {
@@ -76,13 +77,13 @@ void *server_thread (void *arg)
         msg_start  = buf_ptr + buf_offset;
         msg_end    = msg_start + msg_size - 1;
         raddr      = raddr_base + buf_offset;
-	
+
         if (ops_count == NUM_WARMING_UP_OPS) {
             gettimeofday (&start, NULL);
         }
 
-	n = ibv_poll_cq (cq, num_wc, wc);
-	debug ("ops_count = %ld", ops_count);
+        n = ibv_poll_cq (cq, num_wc, wc);
+        debug ("ops_count = %ld", ops_count);
     }
     gettimeofday (&end, NULL);
 
@@ -97,7 +98,7 @@ void *server_thread (void *arg)
 
  error:
     if (wc != NULL) {
-    	free (wc);
+        free (wc);
     }
     pthread_exit ((void *)-1);
 }
@@ -119,8 +120,8 @@ int run_server ()
     check (threads != NULL, "Failed to allocate threads.");
 
     for (i = 0; i < num_threads; i++) {
-	ret = pthread_create (&threads[i], &attr, server_thread, (void *)i);
-	check (ret == 0, "Failed to create server_thread[%ld]", i);
+        ret = pthread_create (&threads[i], &attr, server_thread, (void *)i);
+        check (ret == 0, "Failed to create server_thread[%ld]", i);
     }
 
     bool thread_ret_normally = true;
@@ -142,11 +143,11 @@ int run_server ()
 
     return 0;
 
- error:
+error:
     if (threads != NULL) {
         free (threads);
     }
     pthread_attr_destroy    (&attr);
-    
+
     return -1;
 }
