@@ -1,25 +1,24 @@
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <endian.h>
+#include <assert.h>
 #include <byteswap.h>
-#include <netdb.h>
+#include <endian.h>
 #include <errno.h>
 #include <getopt.h>
-#include <assert.h>
+#include <infiniband/verbs.h>
+#include <inttypes.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <infiniband/verbs.h>
+#include <unistd.h>
 
 #define MAX_POLL_CQ_TIMEOUT 2000 // ms
 #define MSG "This is alice, how are you?"
-#define RDMAMSGR    "RDMA read operation"
-#define RDMAMSGW    "RDMA write operation"
-#define MSG_SIZE    (strlen(MSG)+1)
+#define RDMAMSGR "RDMA read operation"
+#define RDMAMSGW "RDMA write operation"
+#define MSG_SIZE (strlen(MSG) + 1)
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static inline uint64_t htonll(uint64_t x) { return bswap_64(x); }
@@ -31,58 +30,65 @@ static inline uint64_t ntohll(uint64_t x) { return x; }
 #error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
 #endif
 
-#define ERROR(fmt, args...) { fprintf(stderr, "ERROR: %s(): "fmt, __func__, ##args); }
-#define ERR_DIE(fmt, args...) { ERROR(fmt, ##args); exit(EXIT_FAILURE); }
-#define INFO(fmt, args...) { printf("INFO: %s(): "fmt, __func__, ##args); }
-#define WARN(fmt, args...) { printf("WARN: %s(): "fmt, __func__, ##args); }
+#define ERROR(fmt, args...)                                                    \
+    { fprintf(stderr, "ERROR: %s(): " fmt, __func__, ##args); }
+#define ERR_DIE(fmt, args...)                                                  \
+    {                                                                          \
+        ERROR(fmt, ##args);                                                    \
+        exit(EXIT_FAILURE);                                                    \
+    }
+#define INFO(fmt, args...)                                                     \
+    { printf("INFO: %s(): " fmt, __func__, ##args); }
+#define WARN(fmt, args...)                                                     \
+    { printf("WARN: %s(): " fmt, __func__, ##args); }
 
-#define CHECK(expr) {               \
-    int rc = (expr);                \
-    if (rc != 0) {                  \
-        perror(strerror(errno));    \
-        exit(EXIT_FAILURE);         \
-    }                               \
-}
+#define CHECK(expr)                                                            \
+    {                                                                          \
+        int rc = (expr);                                                       \
+        if (rc != 0) {                                                         \
+            perror(strerror(errno));                                           \
+            exit(EXIT_FAILURE);                                                \
+        }                                                                      \
+    }
 
 // structure of test parameters
 struct config_t {
-    const char  *dev_name;      // IB device name
-    char        *server_name;   // server hostname
-    uint32_t    tcp_port;       // server TCP port
-    int         ib_port;        // local IB port to work with
-    int         gid_idx;        // GID index to use
+    const char *dev_name; // IB device name
+    char *server_name;    // server hostname
+    uint32_t tcp_port;    // server TCP port
+    int ib_port;          // local IB port to work with
+    int gid_idx;          // GID index to use
 };
 
 // structure to exchange data which is needed to connect the QPs
 struct cm_con_data_t {
-    uint64_t    addr;       // buffer address
-    uint32_t    rkey;       // remote key
-    uint32_t    qp_num;     // QP number
-    uint16_t    lid;        // LID of the IB port
-    uint8_t     gid[16];    // GID
+    uint64_t addr;   // buffer address
+    uint32_t rkey;   // remote key
+    uint32_t qp_num; // QP number
+    uint16_t lid;    // LID of the IB port
+    uint8_t gid[16]; // GID
 } __attribute__((packed));
 
 // structure of system resources
 struct resources {
-    struct ibv_device_attr  device_attr;    // device attributes
-    struct ibv_port_attr    port_attr;      // IB port attributes
-    struct cm_con_data_t    remote_props;  // values to connect to remote side
-    struct ibv_context      *ib_ctx;        // device handle
-    struct ibv_pd           *pd;            // PD handle
-    struct ibv_cq           *cq;            // CQ handle
-    struct ibv_qp           *qp;            // QP handle
-    struct ibv_mr           *mr;            // MR handle for buf
-    char                    *buf;           // memory buffer pointer, used for
-                                            // RDMA send ops
-    int                     sock;           // TCP socket file descriptor
+    struct ibv_device_attr device_attr; // device attributes
+    struct ibv_port_attr port_attr;     // IB port attributes
+    struct cm_con_data_t remote_props;  // values to connect to remote side
+    struct ibv_context *ib_ctx;         // device handle
+    struct ibv_pd *pd;                  // PD handle
+    struct ibv_cq *cq;                  // CQ handle
+    struct ibv_qp *qp;                  // QP handle
+    struct ibv_mr *mr;                  // MR handle for buf
+    char *buf;                          // memory buffer pointer, used for
+                                        // RDMA send ops
+    int sock;                           // TCP socket file descriptor
 };
 
-struct config_t config = {
-    .dev_name = NULL,
-    .server_name = NULL,
-    .tcp_port = 20000,
-    .ib_port = 1,
-    .gid_idx = -1};
+struct config_t config = {.dev_name = NULL,
+                          .server_name = NULL,
+                          .tcp_port = 20000,
+                          .ib_port = 1,
+                          .gid_idx = -1};
 
 // \begin socket operation
 //
@@ -94,8 +100,7 @@ struct config_t config = {
 // Connect a socket. If servername is specified a client connection will be
 // initiated to the indicated server and port. Otherwise listen on the indicated
 // port for an incoming connection.
-static int sock_connect(const char *server_name, int port)
-{
+static int sock_connect(const char *server_name, int port) {
     struct addrinfo *resolved_addr = NULL;
     struct addrinfo *iterator;
     char service[6];
@@ -113,18 +118,18 @@ static int sock_connect(const char *server_name, int port)
     //      char            *ai_canonname;
     //      struct addrinfo *ai_next;
     //  }
-    struct addrinfo hints = {
-        .ai_flags = AI_PASSIVE,
-        .ai_family = AF_INET,
-        .ai_socktype = SOCK_STREAM
-    };
+    struct addrinfo hints = {.ai_flags = AI_PASSIVE,
+                             .ai_family = AF_INET,
+                             .ai_socktype = SOCK_STREAM};
 
     // resolve DNS address, user sockfd as temp storage
     sprintf(service, "%d", port);
     CHECK(getaddrinfo(server_name, service, &hints, &resolved_addr));
 
-    for (iterator = resolved_addr; iterator != NULL; iterator = iterator->ai_next) {
-        sockfd = socket(iterator->ai_family, iterator->ai_socktype, iterator->ai_protocol);
+    for (iterator = resolved_addr; iterator != NULL;
+         iterator = iterator->ai_next) {
+        sockfd = socket(iterator->ai_family, iterator->ai_socktype,
+                        iterator->ai_protocol);
         assert(sockfd >= 0);
 
         if (server_name == NULL) {
@@ -142,13 +147,13 @@ static int sock_connect(const char *server_name, int port)
     return sockfd;
 }
 
-// Sync data across a socket. The indicated local data will be sent to the remote.
-// It will then wait for the remote to send its data back. It is assumned that
-// the two sides are in sync and call this function in the proper order. Chaos
-// will ensure if they are not. Also note this is a blocking function and will
-// wait for the full data to be received from the remote.
-int sock_sync_data(int sockfd, int xfer_size, char *local_data, char *remote_data)
-{
+// Sync data across a socket. The indicated local data will be sent to the
+// remote. It will then wait for the remote to send its data back. It is
+// assumned that the two sides are in sync and call this function in the proper
+// order. Chaos will ensure if they are not. Also note this is a blocking
+// function and will wait for the full data to be received from the remote.
+int sock_sync_data(int sockfd, int xfer_size, char *local_data,
+                   char *remote_data) {
     int read_bytes = 0;
     int write_bytes = 0;
 
@@ -167,8 +172,7 @@ int sock_sync_data(int sockfd, int xfer_size, char *local_data, char *remote_dat
 
 // Poll the CQ for a single event. This function will continue to poll the queue
 // until MAX_POLL_TIMEOUT ms have passed.
-static int poll_completion(struct resources *res)
-{
+static int poll_completion(struct resources *res) {
     struct ibv_wc wc;
     unsigned long start_time_ms;
     unsigned long curr_time_ms;
@@ -182,7 +186,8 @@ static int poll_completion(struct resources *res)
         poll_result = ibv_poll_cq(res->cq, 1, &wc);
         gettimeofday(&curr_time, NULL);
         curr_time_ms = (curr_time.tv_sec * 1000) + (curr_time.tv_usec / 1000);
-    } while ((poll_result == 0) && ((curr_time_ms - start_time_ms) < MAX_POLL_CQ_TIMEOUT));
+    } while ((poll_result == 0) &&
+             ((curr_time_ms - start_time_ms) < MAX_POLL_CQ_TIMEOUT));
 
     if (poll_result < 0) {
         // poll CQ failed
@@ -198,7 +203,7 @@ static int poll_completion(struct resources *res)
 
     if (wc.status != IBV_WC_SUCCESS) {
         ERROR("Got bad completion with status: 0x%x, vendor syndrome: 0x%x\n",
-                wc.status, wc.vendor_err);
+              wc.status, wc.vendor_err);
         goto die;
     }
 
@@ -209,8 +214,7 @@ die:
 }
 
 // This function will create and post a send work request.
-static int post_send(struct resources *res, int opcode)
-{
+static int post_send(struct resources *res, int opcode) {
     struct ibv_send_wr sr;
     struct ibv_sge sge;
     struct ibv_send_wr *bad_wr = NULL;
@@ -243,29 +247,28 @@ static int post_send(struct resources *res, int opcode)
     CHECK(ibv_post_send(res->qp, &sr, &bad_wr));
 
     switch (opcode) {
-        case IBV_WR_SEND:
-            INFO("Send request was posted\n");
-            break;
-        case IBV_WR_RDMA_READ:
-            INFO("RDMA read request was posted\n");
-            break;
-        case IBV_WR_RDMA_WRITE:
-            INFO("RDMA write request was posted\n");
-            break;
-        default:
-            INFO("Unknown request was posted\n");
-            break;
+    case IBV_WR_SEND:
+        INFO("Send request was posted\n");
+        break;
+    case IBV_WR_RDMA_READ:
+        INFO("RDMA read request was posted\n");
+        break;
+    case IBV_WR_RDMA_WRITE:
+        INFO("RDMA write request was posted\n");
+        break;
+    default:
+        INFO("Unknown request was posted\n");
+        break;
     }
 
     // FIXME: ;)
     return 0;
 }
 
-static int post_receive(struct resources *res)
-{
-    struct ibv_recv_wr  rr;
-    struct ibv_sge      sge;
-    struct ibv_recv_wr  *bad_wr;
+static int post_receive(struct resources *res) {
+    struct ibv_recv_wr rr;
+    struct ibv_sge sge;
+    struct ibv_recv_wr *bad_wr;
 
     // prepare the scatter / gather entry
     memset(&sge, 0, sizeof(sge));
@@ -289,16 +292,12 @@ static int post_receive(struct resources *res)
 }
 
 // Res is initialized to default values
-static void resources_init(struct resources *res)
-{
+static void resources_init(struct resources *res) {
     memset(res, 0, sizeof(*res));
     res->sock = -1;
 }
 
-// This function creates and allocates all necessary system resources. These are
-// stored in res.
-static int resources_create(struct resources *res)
-{
+static int resources_create(struct resources *res) {
     struct ibv_device **dev_list = NULL;
     struct ibv_qp_init_attr qp_init_attr;
     struct ibv_device *ib_dev = NULL;
@@ -314,7 +313,7 @@ static int resources_create(struct resources *res)
         res->sock = sock_connect(config.server_name, config.tcp_port);
         if (res->sock < 0) {
             ERROR("Failed to establish TCP connection to server %s, port %d\n",
-                    config.server_name, config.tcp_port);
+                  config.server_name, config.tcp_port);
             goto die;
         }
     } else {
@@ -323,7 +322,7 @@ static int resources_create(struct resources *res)
         res->sock = sock_connect(NULL, config.tcp_port);
         if (res->sock < 0) {
             ERROR("Failed to establish TCP connection with client on port %d\n",
-                    config.tcp_port);
+                  config.tcp_port);
             goto die;
         }
     }
@@ -347,7 +346,8 @@ static int resources_create(struct resources *res)
     for (i = 0; i < num_devices; i++) {
         if (!config.dev_name) {
             config.dev_name = strdup(ibv_get_device_name(dev_list[i]));
-            INFO("Device not specified, using first one found: %s\n", config.dev_name);
+            INFO("Device not specified, using first one found: %s\n",
+                 config.dev_name);
         }
 
         if (strcmp(ibv_get_device_name(dev_list[i]), config.dev_name) == 0) {
@@ -392,12 +392,13 @@ static int resources_create(struct resources *res)
 
     // register the memory buffer
     mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-        IBV_ACCESS_REMOTE_WRITE;
+               IBV_ACCESS_REMOTE_WRITE;
     res->mr = ibv_reg_mr(res->pd, res->buf, size, mr_flags);
     assert(res->mr != NULL);
 
-    INFO("MR was registered with addr=%p, lkey= 0x%x, rkey= 0x%x, flags= 0x%x\n",
-            res->buf, res->mr->lkey, res->mr->rkey, mr_flags);
+    INFO(
+        "MR was registered with addr=%p, lkey= 0x%x, rkey= 0x%x, flags= 0x%x\n",
+        res->buf, res->mr->lkey, res->mr->rkey, mr_flags);
 
     // \begin create the QP
     memset(&qp_init_attr, 0, sizeof(qp_init_attr));
@@ -423,8 +424,7 @@ die:
 }
 
 // Transition a QP from the RESET to INIT state
-static int modify_qp_to_init(struct ibv_qp *qp)
-{
+static int modify_qp_to_init(struct ibv_qp *qp) {
     struct ibv_qp_attr attr;
     int flags;
 
@@ -433,9 +433,10 @@ static int modify_qp_to_init(struct ibv_qp *qp)
     attr.port_num = config.ib_port;
     attr.pkey_index = 0;
     attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-        IBV_ACCESS_REMOTE_WRITE;
+                           IBV_ACCESS_REMOTE_WRITE;
 
-    flags = IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS;
+    flags =
+        IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS;
 
     CHECK(ibv_modify_qp(qp, &attr, flags));
 
@@ -446,8 +447,8 @@ static int modify_qp_to_init(struct ibv_qp *qp)
 }
 
 // Transition a QP from the INIT to RTR state, using the specified QP number
-static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dlid, uint8_t *dgid)
-{
+static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn,
+                            uint16_t dlid, uint8_t *dgid) {
     struct ibv_qp_attr attr;
     int flags;
 
@@ -476,7 +477,7 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
     }
 
     flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN |
-        IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+            IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 
     CHECK(ibv_modify_qp(qp, &attr, flags));
 
@@ -487,22 +488,21 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
 }
 
 // Transition a QP from the RTR to RTS state
-static int modify_qp_to_rts(struct ibv_qp *qp)
-{
+static int modify_qp_to_rts(struct ibv_qp *qp) {
     struct ibv_qp_attr attr;
     int flags;
 
     memset(&attr, 0, sizeof(attr));
 
     attr.qp_state = IBV_QPS_RTS;
-    attr.timeout = 0x12;    // 18
+    attr.timeout = 0x12; // 18
     attr.retry_cnt = 6;
     attr.rnr_retry = 0;
     attr.sq_psn = 0;
     attr.max_rd_atomic = 1;
 
     flags = IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
-        IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
+            IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
 
     CHECK(ibv_modify_qp(qp, &attr, flags));
 
@@ -513,8 +513,7 @@ static int modify_qp_to_rts(struct ibv_qp *qp)
 }
 
 // Connect the QP, then transition the server side to RTR, sender side to RTS.
-static int connect_qp(struct resources *res)
-{
+static int connect_qp(struct resources *res) {
     struct cm_con_data_t local_con_data;
     struct cm_con_data_t remote_con_data;
     struct cm_con_data_t tmp_con_data;
@@ -524,11 +523,12 @@ static int connect_qp(struct resources *res)
     memset(&my_gid, 0, sizeof(my_gid));
 
     if (config.gid_idx >= 0) {
-        CHECK(ibv_query_gid(res->ib_ctx, config.ib_port, config.gid_idx, &my_gid));
+        CHECK(ibv_query_gid(res->ib_ctx, config.ib_port, config.gid_idx,
+                            &my_gid));
     }
 
-    // \begin exchange required info like buffer (addr & rkey) / qp_num / lid, etc.
-    // exchange using TCP sockets info required to connect QPs
+    // \begin exchange required info like buffer (addr & rkey) / qp_num / lid,
+    // etc. exchange using TCP sockets info required to connect QPs
     local_con_data.addr = htonll((uintptr_t)res->buf);
     local_con_data.rkey = htonl(res->mr->rkey);
     local_con_data.qp_num = htonl(res->qp->qp_num);
@@ -538,7 +538,7 @@ static int connect_qp(struct resources *res)
     INFO("\n Local LID      = 0x%x\n", res->port_attr.lid);
 
     sock_sync_data(res->sock, sizeof(struct cm_con_data_t),
-                (char *)&local_con_data, (char *)&tmp_con_data);
+                   (char *)&local_con_data, (char *)&tmp_con_data);
 
     remote_con_data.addr = ntohll(tmp_con_data.addr);
     remote_con_data.rkey = ntohl(tmp_con_data.rkey);
@@ -550,7 +550,7 @@ static int connect_qp(struct resources *res)
     res->remote_props = remote_con_data;
     // \end exchange required info
 
-    INFO("Remote address = 0x%"PRIx64"\n", remote_con_data.addr);
+    INFO("Remote address = 0x%" PRIx64 "\n", remote_con_data.addr);
     INFO("Remote rkey = 0x%x\n", remote_con_data.rkey);
     INFO("Remote QP number = 0x%x\n", remote_con_data.qp_num);
     INFO("Remote LID = 0x%x\n", remote_con_data.lid);
@@ -561,7 +561,7 @@ static int connect_qp(struct resources *res)
         printf("Remote GID = ");
         for (i = 0; i < 15; i++)
             printf("%02x:", p[i]);
-        printf("%02x\n",p[15]);
+        printf("%02x\n", p[15]);
     }
 
     // modify the QP to init
@@ -573,7 +573,7 @@ static int connect_qp(struct resources *res)
     }
     // modify the QP to RTR
     modify_qp_to_rtr(res->qp, remote_con_data.qp_num, remote_con_data.lid,
-            remote_con_data.gid);
+                     remote_con_data.gid);
 
     // modify QP state to RTS
     modify_qp_to_rts(res->qp);
@@ -587,8 +587,7 @@ static int connect_qp(struct resources *res)
 }
 
 // Cleanup and deallocate all resources used
-static int resources_destroy(struct resources *res)
-{
+static int resources_destroy(struct resources *res) {
     ibv_destroy_qp(res->qp);
     ibv_dereg_mr(res->mr);
     free(res->buf);
@@ -601,37 +600,167 @@ static int resources_destroy(struct resources *res)
     return 0;
 }
 
-static void print_config(void)
-{
+static void print_config(void) {
     {
         INFO("Device name:          %s\n", config.dev_name);
         INFO("IB port:              %u\n", config.ib_port);
     }
     if (config.server_name) {
         INFO("IP:                   %s\n", config.server_name);
-    } {
-        INFO("TCP port:             %u\n", config.tcp_port);
     }
+    { INFO("TCP port:             %u\n", config.tcp_port); }
     if (config.gid_idx >= 0) {
         INFO("GID index:            %u\n", config.gid_idx);
     }
 }
 
-static void print_usage(const char *progname)
-{
+static void print_usage(const char *progname) {
     printf("Usage:\n");
     printf("%s          start a server and wait for connection\n", progname);
     printf("%s <host>   connect to server at <host>\n\n", progname);
     printf("Options:\n");
-    printf("-p, --port <port>           listen on / connect to port <port> (default 20000)\n");
-    printf("-d, --ib-dev <dev>          use IB device <dev> (default first device found)\n");
-    printf("-i, --ib-port <port>        use port <port> of IB device (default 1)\n");
-    printf("-g, --gid_idx <gid index>   gid index to be used in GRH (default not used)\n");
+    printf("-p, --port <port>           listen on / connect to port <port> "
+           "(default 20000)\n");
+    printf("-d, --ib-dev <dev>          use IB device <dev> (default first "
+           "device found)\n");
+    printf("-i, --ib-port <port>        use port <port> of IB device (default "
+           "1)\n");
+    printf("-g, --gid_idx <gid index>   gid index to be used in GRH (default "
+           "not used)\n");
     printf("-h, --help                  this message\n");
 }
 
-int main(int argc, char *argv[])
-{
+// Concerned data structures and APIs:
+//
+// Establish a connection between endpoints:
+//
+// struct ibv_device {
+//     struct _ibv_device_ops   _ops;
+//     enum ibv_node_type       node_type;
+//     enum ibv_transport_type  transport_type;
+//     // Name of underlying kernel IB device, e.g methca0
+//     char                     name[IBV_SYSFS_NAME_MAX];
+//     // Name of uverbs device, e.g. uverbs0
+//     char                     dev_name[IBV_SYSFS_NAME_MAX];
+//     // Path to infiniband_verbs class device in sysfs
+//     char                     dev_path[IBV_SYSFS_PATH_MAX];
+//     // Path to infiniband class device in sysfs
+//     char                     ibdev_path[IBV_SYSFS_PATH_MAX];
+// };
+// struct ibv_device **ibv_get_device_list(int *num_devices);
+// const char *ibv_get_device_name(struct ibv_device *device);
+//
+// struct ibv_context {
+//     struct ibv_device        *device;
+//     struct ibv_context_ops   ops;
+//     int                      cmd_fd;
+//     int                      async_fd;
+//     int                      num_com_vector;
+//     pthread_mutex_t          mutex;
+//     void                     *abi_compact;
+// };
+// struct ibv_context *ibv_open_device(struct ibv_device *device);
+//
+// struct ibv_port_attr {
+//     enum ibv_port_state state;           // Logical port state
+//     enum ibv_mtu        max_mtu;         // Max MTU supported by port
+//     enum ibv_mtu        active_mtu;      // Actual MTU
+//     int                 gid_tbl_len;     // Length of source GID table
+//     uint32_t            port_cap_flags;  // Port capabilities
+//     uint32_t            max_msg_sz;      // Maximum message size
+//     uint32_t            bad_pkey_cntr;   // Bad P_Key counter
+//     uint32_t            qkey_viol_cntr;  // Q_Key violation counter
+//     uint16_t            pkey_tbl_len;    // Length of partition table
+//     uint16_t            lid;             // Base port LID
+//     uint16_t            sm_lid;          // SM LID
+//     uint8_t             lmc;             // LMC of LID
+//     uint8_t             max_vl_num;      // Maximum number of VLs
+//     uint8_t             sm_sl;           // SM service level
+//     uint8_t             subnet_timeout;  // Subnet propagation delay
+//     uint8_t             init_type_reply; // Type of initialization performed
+//                                          // by SM
+//     uint8_t             active_width;    // Currently active link width
+//     uint8_t             active_speed;    // Currently active link speed
+//     uint8_t             phys_state;      // Physical port state
+//     uint8_t             link_layer;      // link layer protocol of the port
+//
+// };
+// int ibv_query_port(struct ibv_context *context, uint8_t port_num,
+//                    struct ibv_port_attr *port_attr);
+//
+// struct ibv_pd {
+//     struct ibv_mr *mr;
+//     uint64_t      addr;
+//     uint64_t      length;
+//     unsigned int  mw_access_flags;
+// };
+// struct ibv_pd *ibv_alloc_pd(struct ibv_context *context);
+//
+// struct ibv_cq {
+//     struct ibv_context       *context;
+//     struct ibv_comp_channel  *channel;
+//     void                     *cq_context;
+//     uint32_t                 handle;
+//     int                      cqe;
+//     pthread_mutex_t          mutex;
+//     pthread_cond_t           cond;
+//     uint32_t                 comp_events_completed;
+//     uint32_t                 async_events_completed;
+// };
+// struct ibv_cq *ibv_create_cq(struct ibv_context *context,
+//                              int cqe,
+//                              void *cq_context,
+//                              struct ibv_com_channel *channel,
+//                              int comp_vector);
+//
+// struct ibv_qp_init_attr {
+//     void                 *qp_context;
+//     struct ibv_cq        *send_cq;
+//     struct ibv_cq        *recv_cq;
+//     struct ibv_srq       *srq;
+//     struct ibv_qp_cap    cap;
+//     enum ibv_qp_type     qp_type;
+//     int                  sq_sig_all;
+// };
+// struct ibv_qp *ibv_create_qp(struct ibv_pd *pd,
+//                              struct ibv_qp_init_attr *qp_int_attr);
+//
+// Deliver data:
+//
+// struct ibv_mr *ibv_reg_mr(struct ibv_pd *pd, void *addr,
+//                           size_t length, int access);
+// int ibv_post_send(struct ibv_qp *qp, struct ibv_send_wr *wr,
+//                   struct ibv_send_wr **bad_wr);
+// int ibv_post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
+//                   struct ibv_recv_wr **bad_wr);
+//
+// struct {
+//     uint64_t             wr_id;
+//     enum ibv_wc_status   status;
+//     enum ibv_wc_opcode   opcode;
+//     uint32_t             vendor_err;
+//     uint32_t             byte_len;
+//     // When (wc_flags & IBV_WC_WITH_IMM): Immediate data in network byte
+//     // order.
+//     // When (wc_flags & IBV_WC_WITH_INV): Stores the invalidated rkey.
+//     union {
+//         __be32   imm_data;
+//         uint32_t invalidated_rkey;
+//     };
+//     uint32_t             qp_num;
+//     uint32_t             src_qp;
+//     unsigned int         wc_flags;
+//     uint16_t             pkey_index;
+//     uint16_t             slid;
+//     uint8_t              sl;
+//     uint8_t              dlid_path_bits;
+// };
+// int ibv_poll_cq(struct ibv_cq *cq, int num_entries,
+//                 struct ibv_wc *wc);
+
+// This function creates and allocates all necessary system resources. These are
+// stored in res.
+int main(int argc, char *argv[]) {
     struct resources res;
     char temp_char;
 
@@ -640,47 +769,47 @@ int main(int argc, char *argv[])
         int c;
 
         static struct option long_options[] = {
-            {"port",    required_argument, 0, 'p'},
-            {"ib-dev",  required_argument, 0, 'd'},
+            {"port", required_argument, 0, 'p'},
+            {"ib-dev", required_argument, 0, 'd'},
             {"ib-port", required_argument, 0, 'i'},
             {"gid-idx", required_argument, 0, 'g'},
-            {"help",    no_argument,       0, 'h'},
-            {NULL,      0,                 0,  0}};
+            {"help", no_argument, 0, 'h'},
+            {NULL, 0, 0, 0}};
 
         c = getopt_long(argc, argv, "p:d:i:g:h", long_options, NULL);
         if (c == -1)
             break;
 
         switch (c) {
-            case 'p':
-                config.tcp_port = strtoul(optarg, NULL, 0);
-                break;
-            case 'd':
-                config.dev_name = strdup(optarg);
-                break;
-            case 'i':
-                config.ib_port = strtoul(optarg, NULL, 0);
-                if (config.ib_port < 0) {
-                    print_usage(argv[0]);
-                    exit(EXIT_FAILURE);
-                }
-                break;
-            case 'g':
-                config.gid_idx = strtoul(optarg, NULL, 0);
-                if (config.gid_idx < 0) {
-                    print_usage(argv[0]);
-                    exit(EXIT_FAILURE);
-                }
-                break;
-            case 'h':
-            default:
+        case 'p':
+            config.tcp_port = strtoul(optarg, NULL, 0);
+            break;
+        case 'd':
+            config.dev_name = strdup(optarg);
+            break;
+        case 'i':
+            config.ib_port = strtoul(optarg, NULL, 0);
+            if (config.ib_port < 0) {
                 print_usage(argv[0]);
                 exit(EXIT_FAILURE);
+            }
+            break;
+        case 'g':
+            config.gid_idx = strtoul(optarg, NULL, 0);
+            if (config.gid_idx < 0) {
+                print_usage(argv[0]);
+                exit(EXIT_FAILURE);
+            }
+            break;
+        case 'h':
+        default:
+            print_usage(argv[0]);
+            exit(EXIT_FAILURE);
         }
     }
 
     // parse the last parameter (if exists) as the server name
-    if (optind == argc-1) {
+    if (optind == argc - 1) {
         config.server_name = argv[optind];
     } else if (optind < argc) {
         print_usage(argv[0]);
@@ -716,8 +845,10 @@ int main(int argc, char *argv[])
         strcpy(res.buf, RDMAMSGR);
     }
 
-    // sync so we are sure server side has data ready before client tries to read it
-    sock_sync_data(res.sock, 1, "R", &temp_char);   // just send a dummy char back and forth
+    // sync so we are sure server side has data ready before client tries to
+    // read it
+    sock_sync_data(res.sock, 1, "R",
+                   &temp_char); // just send a dummy char back and forth
 
     // Now the client performs an RDMA read and then write on server. Note that
     // the server has no idea these events have occured.
