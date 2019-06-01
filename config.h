@@ -26,6 +26,8 @@ struct config_info {
     char *sock_port; /* socket port number */
 } __attribute__((aligned(64)));
 
+extern struct config_info g_config_info;
+
 int parse_config_file(char *fname);
 void destroy_config_info();
 

@@ -18,6 +18,8 @@ struct ib_res {
     size_t ib_buf_size;
 };
 
+extern struct ib_res g_ib_res;
+
 int setup_ib();
 void close_ib_connection();
 

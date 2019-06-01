@@ -9,9 +9,6 @@
 
 FILE *log_fp = NULL;
 
-extern struct ib_res g_ib_res;
-extern struct config_info g_config_info;
-
 int init_env();
 void destroy_env();
 

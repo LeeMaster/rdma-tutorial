@@ -12,7 +12,7 @@ struct ib_res g_ib_res;
 
 int connect_qp_server() {
     int ret = 0, n = 0, i = 0;
-    int num_peers = config_info.num_clients;
+    int num_peers = g_config_info.num_clients;
     int sockfd = 0;
     int *peer_sockfd = NULL;
     struct sockaddr_in peer_addr;
@@ -21,7 +21,7 @@ int connect_qp_server() {
     struct qp_info *local_qp_info = NULL;
     struct qp_info *remote_qp_info = NULL;
 
-    sockfd = sock_create_bind(config_info.sock_port);
+    sockfd = sock_create_bind(g_config_info.sock_port);
     check(sockfd > 0, "Failed to create server socket.");
     listen(sockfd, 5);
 
@@ -39,9 +39,9 @@ int connect_qp_server() {
     check(local_qp_info != NULL, "Failed to allocate local_qp_info");
 
     for (i = 0; i < num_peers; i++) {
-        local_qp_info[i].lid = ib_res.port_attr.lid;
-        local_qp_info[i].qp_num = ib_res.qp[i]->qp_num;
-        local_qp_info[i].rank = config_info.rank;
+        local_qp_info[i].lid = g_ib_res.port_attr.lid;
+        local_qp_info[i].qp_num = g_ib_res.qp[i]->qp_num;
+        local_qp_info[i].rank = g_config_info.rank;
     }
 
     /* get qp_info from client */
@@ -78,12 +78,12 @@ int connect_qp_server() {
                 break;
             }
         }
-        ret = modify_qp_to_rts(ib_res.qp[peer_ind], remote_qp_info[i].qp_num,
+        ret = modify_qp_to_rts(g_ib_res.qp[peer_ind], remote_qp_info[i].qp_num,
                                remote_qp_info[i].lid);
         check(ret == 0, "Failed to modify qp[%d] to rts", peer_ind);
 
         log("\tqp[%" PRIu32 "] <-> qp[%" PRIu32 "]",
-            ib_res.qp[peer_ind]->qp_num, remote_qp_info[i].qp_num);
+            g_ib_res.qp[peer_ind]->qp_num, remote_qp_info[i].qp_num);
     }
     log(LOG_SUB_HEADER, "End of IB Config");
 
@@ -124,7 +124,7 @@ error:
 
 int connect_qp_client() {
     int ret = 0, n = 0, i = 0;
-    int num_peers = ib_res.num_qps;
+    int num_peers = g_ib_res.num_qps;
     int *peer_sockfd = NULL;
     char sock_buf[64] = {'\0'};
 
@@ -136,7 +136,7 @@ int connect_qp_client() {
 
     for (i = 0; i < num_peers; i++) {
         peer_sockfd[i] =
-            sock_create_connect(config_info.servers[i], config_info.sock_port);
+            sock_create_connect(g_config_info.servers[i], g_config_info.sock_port);
         check(peer_sockfd[i] > 0, "Failed to create peer_sockfd[%d]", i);
     }
 
@@ -145,9 +145,9 @@ int connect_qp_client() {
     check(local_qp_info != NULL, "Failed to allocate local_qp_info");
 
     for (i = 0; i < num_peers; i++) {
-        local_qp_info[i].lid = ib_res.port_attr.lid;
-        local_qp_info[i].qp_num = ib_res.qp[i]->qp_num;
-        local_qp_info[i].rank = config_info.rank;
+        local_qp_info[i].lid = g_ib_res.port_attr.lid;
+        local_qp_info[i].qp_num = g_ib_res.qp[i]->qp_num;
+        local_qp_info[i].rank = g_config_info.rank;
     }
 
     /* send qp_info to server */
@@ -178,12 +178,12 @@ int connect_qp_client() {
                 break;
             }
         }
-        ret = modify_qp_to_rts(ib_res.qp[peer_ind], remote_qp_info[i].qp_num,
+        ret = modify_qp_to_rts(g_ib_res.qp[peer_ind], remote_qp_info[i].qp_num,
                                remote_qp_info[i].lid);
         check(ret == 0, "Failed to modify qp[%d] to rts", peer_ind);
 
         log("\tqp[%" PRIu32 "] <-> qp[%" PRIu32 "]",
-            ib_res.qp[peer_ind]->qp_num, remote_qp_info[i].qp_num);
+            g_ib_res.qp[peer_ind]->qp_num, remote_qp_info[i].qp_num);
     }
     log(LOG_SUB_HEADER, "End of IB Config");
 
@@ -233,12 +233,12 @@ int setup_ib() {
     int ret = 0;
     int i = 0;
     struct ibv_device **dev_list = NULL;
-    memset(&ib_res, 0, sizeof(struct ib_res));
+    memset(&g_ib_res, 0, sizeof(struct g_ib_res));
 
-    if (config_info.is_server) {
-        ib_res.num_qps = config_info.num_clients;
+    if (g_config_info.is_server) {
+        g_ib_res.num_qps = g_config_info.num_clients;
     } else {
-        ib_res.num_qps = config_info.num_servers;
+        g_ib_res.num_qps = g_config_info.num_servers;
     }
 
     /* get IB device list */
@@ -246,15 +246,15 @@ int setup_ib() {
     check(dev_list != NULL, "Failed to get ib device list.");
 
     /* create IB context */
-    ib_res.ctx = ibv_open_device(*dev_list);
-    check(ib_res.ctx != NULL, "Failed to open ib device.");
+    g_ib_res.ctx = ibv_open_device(*dev_list);
+    check(g_ib_res.ctx != NULL, "Failed to open ib device.");
 
     /* allocate protection domain */
-    ib_res.pd = ibv_alloc_pd(ib_res.ctx);
-    check(ib_res.pd != NULL, "Failed to allocate protection domain.");
+    g_ib_res.pd = ibv_alloc_pd(g_ib_res.ctx);
+    check(g_ib_res.pd != NULL, "Failed to allocate protection domain.");
 
     /* query IB port attribute */
-    ret = ibv_query_port(ib_res.ctx, IB_PORT, &ib_res.port_attr);
+    ret = ibv_query_port(g_ib_res.ctx, IB_PORT, &g_ib_res.port_attr);
     check(ret == 0, "Failed to query IB port information.");
 
     /* register mr */
@@ -262,59 +262,59 @@ int setup_ib() {
     /* the recv buffer occupies the first half while the sending buffer */
     /* occupies the second half */
     /* assume all msgs are of the same content */
-    ib_res.ib_buf_size =
-        config_info.msg_size * config_info.num_concurr_msgs * ib_res.num_qps;
-    ib_res.ib_buf = (char *)memalign(4096, ib_res.ib_buf_size);
-    check(ib_res.ib_buf != NULL, "Failed to allocate ib_buf");
+    g_ib_res.ib_buf_size =
+        g_config_info.msg_size * g_config_info.num_concurr_msgs * g_ib_res.num_qps;
+    g_ib_res.ib_buf = (char *)memalign(4096, g_ib_res.ib_buf_size);
+    check(g_ib_res.ib_buf != NULL, "Failed to allocate ib_buf");
 
-    ib_res.mr = ibv_reg_mr(ib_res.pd, (void *)ib_res.ib_buf, ib_res.ib_buf_size,
+    g_ib_res.mr = ibv_reg_mr(g_ib_res.pd, (void *)g_ib_res.ib_buf, g_ib_res.ib_buf_size,
                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
                                IBV_ACCESS_REMOTE_WRITE);
-    check(ib_res.mr != NULL, "Failed to register mr");
+    check(g_ib_res.mr != NULL, "Failed to register mr");
 
     /* query IB device attr */
-    ret = ibv_query_device(ib_res.ctx, &ib_res.dev_attr);
+    ret = ibv_query_device(g_ib_res.ctx, &g_ib_res.dev_attr);
     check(ret == 0, "Failed to query device");
 
     /* create cq */
-    ib_res.cq =
-        ibv_create_cq(ib_res.ctx, ib_res.dev_attr.max_cqe, NULL, NULL, 0);
-    check(ib_res.cq != NULL, "Failed to create cq");
+    g_ib_res.cq =
+        ibv_create_cq(g_ib_res.ctx, g_ib_res.dev_attr.max_cqe, NULL, NULL, 0);
+    check(g_ib_res.cq != NULL, "Failed to create cq");
 
     /* create srq */
     struct ibv_srq_init_attr srq_init_attr = {
-        .attr.max_wr = ib_res.dev_attr.max_srq_wr,
+        .attr.max_wr = g_ib_res.dev_attr.max_srq_wr,
         .attr.max_sge = 1,
     };
 
-    ib_res.srq = ibv_create_srq(ib_res.pd, &srq_init_attr);
+    g_ib_res.srq = ibv_create_srq(g_ib_res.pd, &srq_init_attr);
 
     /* create qp */
     struct ibv_qp_init_attr qp_init_attr = {
-        .send_cq = ib_res.cq,
-        .recv_cq = ib_res.cq,
-        .srq = ib_res.srq,
+        .send_cq = g_ib_res.cq,
+        .recv_cq = g_ib_res.cq,
+        .srq = g_ib_res.srq,
         .cap =
             {
-                .max_send_wr = ib_res.dev_attr.max_qp_wr,
-                .max_recv_wr = ib_res.dev_attr.max_qp_wr,
+                .max_send_wr = g_ib_res.dev_attr.max_qp_wr,
+                .max_recv_wr = g_ib_res.dev_attr.max_qp_wr,
                 .max_send_sge = 1,
                 .max_recv_sge = 1,
             },
         .qp_type = IBV_QPT_RC,
     };
 
-    ib_res.qp =
-        (struct ibv_qp **)calloc(ib_res.num_qps, sizeof(struct ibv_qp *));
-    check(ib_res.qp != NULL, "Failed to allocate qp");
+    g_ib_res.qp =
+        (struct ibv_qp **)calloc(g_ib_res.num_qps, sizeof(struct ibv_qp *));
+    check(g_ib_res.qp != NULL, "Failed to allocate qp");
 
-    for (i = 0; i < ib_res.num_qps; i++) {
-        ib_res.qp[i] = ibv_create_qp(ib_res.pd, &qp_init_attr);
-        check(ib_res.qp[i] != NULL, "Failed to create qp[%d]", i);
+    for (i = 0; i < g_ib_res.num_qps; i++) {
+        g_ib_res.qp[i] = ibv_create_qp(g_ib_res.pd, &qp_init_attr);
+        check(g_ib_res.qp[i] != NULL, "Failed to create qp[%d]", i);
     }
 
     /* connect QP */
-    if (config_info.is_server) {
+    if (g_config_info.is_server) {
         ret = connect_qp_server();
     } else {
         ret = connect_qp_client();
@@ -334,36 +334,36 @@ error:
 void close_ib_connection() {
     int i;
 
-    if (ib_res.qp != NULL) {
-        for (i = 0; i < ib_res.num_qps; i++) {
-            if (ib_res.qp[i] != NULL) {
-                ibv_destroy_qp(ib_res.qp[i]);
+    if (g_ib_res.qp != NULL) {
+        for (i = 0; i < g_ib_res.num_qps; i++) {
+            if (g_ib_res.qp[i] != NULL) {
+                ibv_destroy_qp(g_ib_res.qp[i]);
             }
         }
-        free(ib_res.qp);
+        free(g_ib_res.qp);
     }
 
-    if (ib_res.srq != NULL) {
-        ibv_destroy_srq(ib_res.srq);
+    if (g_ib_res.srq != NULL) {
+        ibv_destroy_srq(g_ib_res.srq);
     }
 
-    if (ib_res.cq != NULL) {
-        ibv_destroy_cq(ib_res.cq);
+    if (g_ib_res.cq != NULL) {
+        ibv_destroy_cq(g_ib_res.cq);
     }
 
-    if (ib_res.mr != NULL) {
-        ibv_dereg_mr(ib_res.mr);
+    if (g_ib_res.mr != NULL) {
+        ibv_dereg_mr(g_ib_res.mr);
     }
 
-    if (ib_res.pd != NULL) {
-        ibv_dealloc_pd(ib_res.pd);
+    if (g_ib_res.pd != NULL) {
+        ibv_dealloc_pd(g_ib_res.pd);
     }
 
-    if (ib_res.ctx != NULL) {
-        ibv_close_device(ib_res.ctx);
+    if (g_ib_res.ctx != NULL) {
+        ibv_close_device(g_ib_res.ctx);
     }
 
-    if (ib_res.ib_buf != NULL) {
-        free(ib_res.ib_buf);
+    if (g_ib_res.ib_buf != NULL) {
+        free(g_ib_res.ib_buf);
     }
 }
